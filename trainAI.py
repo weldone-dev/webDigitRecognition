@@ -20,6 +20,7 @@ def initModel():
     ])
     return model
 model = initModel()
+#If you need to finish teaching the model, then comment out model = initModel () and uncomment the line below
 #model = load_model('my_model.h5')
 
 model.compile(optimizer='adam',

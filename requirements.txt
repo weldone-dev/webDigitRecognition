@@ -1,0 +1,5 @@
+tensorflow==2.2.0
+numpy==1.18.4
+Pillow==7.1.2
+Flask==1.1.2
+Flask-SocketIO==4.3.0

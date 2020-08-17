@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebDigitRecognition</title>
+    <link rel="stylesheet" href="/static/main.css">
+</head>
+
+<body>
+    <main>
+        <div class="event">
+            <h3>Думаю это <span id="num">...</span></h3>
+        </div>
+    </main>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js"
+        integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous"></script>
+    <script type="text/javascript" charset="utf-8">
+        document.oncontextmenu = () => false;
+        (function () {
+            let socket = io();
+            //Socket listener num out AI 
+            socket.on('out_num', function (e) {
+                console.debug(e.data)
+                document.getElementById("num").innerText = e.data
+            });
+            function onListener(elements, event, fn) {
+                if (typeof elements === "object") {
+                    elements.addEventListener(event, fn, false);
+                    return false
+                } else {
+                    let selectors = document.querySelectorAll(elements)
+                    for (let i = 0; i < selectors.length; i++) {
+                        selectors[i].addEventListener(event, fn, false)
+                    }
+                }
+            }
+            //Config canvas
+            let config = {
+                W: 28,
+                H: 28,
+            };
+            let draw = false;
+            let pos = [];
+            let colorBg = 255;
+            let canvas, ctx;
+            let md;
+            let toUrl = false;
+            init()
+            function init() {
+                canvas = document.createElement('canvas')
+                canvas.width = config.W;
+                canvas.height = config.H;
+                ctx = canvas.getContext("2d");
+                document.getElementsByTagName("main")[0].appendChild(canvas)
+                //Clear contex canvas black color
+                ctx.fillStyle = "black"
+                ctx.fillRect(0, 0, config.W, config.H)
+                //Create on listener
+                onListener(window, "mousewheel", (e) => {
+                    if (e.ctrlKey) return false;
+                });
+                onListener(canvas, "mousedown", OnMouseDown);
+                onListener(canvas, "mousemove", OnMouseMove);
+                onListener(canvas, "mouseup", OnMouseUp);
+                onListener(canvas, "touchstart", OnMouseDown);
+                onListener(canvas, "touchmove", OnTouthMove);
+                onListener(canvas, "touchend", OnMouseUp);
+                render()
+            }
+            function render() {
+                for (var i = 0; i < pos.length; i++) {
+                    ctx.fillStyle = `#${pos[i].color.toString(16)}${pos[i].color.toString(16)}${pos[i].color.toString(16)}`
+                    ctx.fillRect(pos[i].x, pos[i].y, 1, 1)
+                }
+                if (toUrl) {
+                    //Convert canvas and send image
+                    socket.emit('num_img', { data: canvas.toDataURL() });
+                    toUrl = false
+                }
+                requestAnimationFrame(render)
+            }
+            function OnMouseDown(e) {
+                ctx.fillStyle = "black"
+                ctx.fillRect(0, 0, config.W, config.H)
+                draw = true;
+                pos = []
+            }
+            function OnMouseMove(e) {
+                let m = getMouse(e);
+                let speedX, speedY, speed
+                if (md) {
+                    speedX = Math.abs(m.x - md.x)
+                    speedY = Math.abs(m.y - md.y)
+                }
+                md = m
+                speed = Math.sqrt(Math.pow(speedX, 2) + Math.pow(speedY, 2))
+                let color = 255 - speed | 0//(speed > 120) ? 120 : speed|0
+                if (draw) {
+                    pos.push({
+                        x: m.x | 0,
+                        y: m.y | 0,
+                        color: 255
+                    });
+                }
+            }
+            function OnTouthMove(e) {
+                let rect = e.target.getBoundingClientRect();
+                let x = e.targetTouches[0].pageX - rect.left;
+                let y = e.targetTouches[0].pageY - rect.top;
+                let mx = x / (canvas.clientWidth / config.W);
+                let my = y / (canvas.clientHeight / config.H);
+                m = { x: mx, y: my }
+                let speedX, speedY, speed
+                if (md) {
+                    speedX = Math.abs(m.x - md.x)
+                    speedY = Math.abs(m.y - md.y)
+                }
+                md = m
+                speed = Math.sqrt(Math.pow(speedX, 2) + Math.pow(speedY, 2))
+                let color = 255 - speed | 0
+                if (draw) {
+                    pos.push({
+                        x: m.x | 0,
+                        y: m.y | 0,
+                        color: 255
+                    });
+                }
+            }
+            function OnMouseUp() {
+                ctx.fillStyle = "black"
+                ctx.fillRect(0, 0, config.W, config.H)
+                draw = false;
+                //Center draw 
+                let point_center = pos_to_center(pos)
+                //Combining points into a line
+                pos = pos_with_line(point_center)
+                toUrl = true
+            }
+            function getMouse(e) {
+                var mx, my;
+                mx = e.offsetX / (canvas.clientWidth / config.W);
+                my = e.offsetY / (canvas.clientHeight / config.H);
+                return { x: mx, y: my };
+            }
+            function pos_to_center(ps) {
+                let minX = 500,
+                    maxX = 0,
+                    minY = 500,
+                    maxY = 0;
+                for (let i = 0; i < ps.length; i++) {
+                    if (ps[i].x > maxX) {
+                        maxX = ps[i].x
+                    }
+                    if (ps[i].x < minX) {
+                        minX = ps[i].x
+                    }
+                    if (ps[i].y > maxY) {
+                        maxY = ps[i].y
+                    }
+                    if (ps[i].y < minY) {
+                        minY = ps[i].y
+                    }
+                }
+                let pos_center = []
+                let paddingX = (config.W - (maxX - minX)) / 2
+                let paddingY = (config.H - (maxY - minY)) / 2
+                for (let i = 0; i < ps.length; i++) {
+                    pos_center.push({
+                        x: (ps[i].x - minX) + paddingX | 0,
+                        y: (ps[i].y - minY) + paddingY | 0,
+                        color: ps[i].color
+                    })
+                }
+                return pos_center
+            }
+            function pos_with_line(ps) {
+                pos_line = []
+                for (let i = 0; i < ps.length - 1; i++) {
+                    let x1 = ps[i].x
+                    let x2 = ps[i + 1].x
+                    let y1 = ps[i].y
+                    let y2 = ps[i + 1].y
+                    const deltaX = Math.abs(x2 - x1);
+                    const deltaY = Math.abs(y2 - y1);
+                    const signX = x1 < x2 ? 1 : -1;
+                    const signY = y1 < y2 ? 1 : -1;
+                    let error = deltaX - deltaY;
+                    pos_line.push({
+                        x: x2,
+                        y: y2,
+                        color: ps[i].color
+                    });
+                    while (x1 != x2 || y1 != y2) {
+                        pos_line.push({
+                            x: x1,
+                            y: y1,
+                            color: ps[i].color
+                        });
+                        const error2 = error * 2;
+                        //
+                        if (error2 > -deltaY) {
+                            error -= deltaY;
+                            x1 += signX;
+                        }
+                        if (error2 < deltaX) {
+                            error += deltaX;
+                            y1 += signY;
+                        }
+                    }
+                }
+                return pos_line
+            }
+
+        }())
+
+
+
+    </script>
+</body>
